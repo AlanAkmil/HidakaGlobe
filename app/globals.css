@@ -940,6 +940,56 @@ html[data-perf="low"] .glass {
   color: rgba(255, 255, 255, 0.62);
 }
 
+.street-bar .btn.sm {
+  pointer-events: auto;
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  color: #ffffff;
+  background: rgba(4, 6, 12, 0.55);
+  text-decoration: none;
+}
+
+.street-move {
+  position: absolute;
+  z-index: 3;
+  right: 12px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 120px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.move-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 66px;
+  padding: 10px 0 8px;
+  border-radius: 18px;
+  background: rgba(4, 6, 12, 0.62);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  transition: transform 0.15s;
+}
+
+.move-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+.move-btn.back svg {
+  transform: rotate(180deg);
+}
+
+.move-btn:active {
+  transform: scale(0.94);
+}
+
 .street-msg {
   position: absolute;
   z-index: 2;
