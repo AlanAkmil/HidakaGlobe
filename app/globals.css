@@ -802,6 +802,34 @@ html[data-perf="low"] .glass {
   transition: opacity 0.25s, transform 0.35s var(--ease), visibility 0s;
 }
 
+/* ---------- Filter sensor ---------- */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: var(--fill);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  transition: transform 0.15s, background-color 0.2s;
+}
+
+.chip:active {
+  transform: scale(0.96);
+}
+
+.chip[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
 /* ---------- HUD taktis ---------- */
 
 .hud {
