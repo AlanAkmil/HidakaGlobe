@@ -88,3 +88,10 @@ export const IconBrand = (p) => (
     <path d="M12 3a9 9 0 0 0 0 18c-3.2-2.6-3.2-15.4 0-18z" fill="currentColor" stroke="none" />
   </svg>
 );
+
+export const IconStreet = (p) => (
+  <svg {...base} {...p}>
+    <path d="M5 20L10.5 4M19 20L13.5 4" />
+    <path d="M12 8v2M12 13v2M12 18v1.5" />
+  </svg>
+);
