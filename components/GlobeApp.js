@@ -188,7 +188,30 @@ export default function GlobeApp() {
     setTheme(root.dataset.theme === "dark" ? "dark" : "light");
     const isLow = root.dataset.perf === "low";
     setLow(isLow);
-    if (isLow) setOpts((o) => ({ ...o, buildings: false }));
+
+    // Pulihkan layer dan opsi 3D yang terakhir dipilih
+    let savedBase = null;
+    let savedOpts = null;
+    try {
+      savedBase = window.localStorage.getItem("hg-base");
+      savedOpts = JSON.parse(window.localStorage.getItem("hg-opts") || "null");
+    } catch (e) {
+      /* abaikan */
+    }
+    if (BASES.some((b) => b.id === savedBase)) setBase(savedBase);
+    setOpts((o) => {
+      const merged = { ...o };
+      if (savedOpts && typeof savedOpts === "object") {
+        for (const k of ["terrain", "buildings", "photo"]) {
+          if (typeof savedOpts[k] === "boolean") merged[k] = savedOpts[k];
+        }
+      }
+      if (isLow) {
+        merged.buildings = false;
+        merged.photo = false;
+      }
+      return merged;
+    });
     if (window.Cesium) setScriptReady(true);
     return () => {
       clearTimeout(toastTimer.current);
@@ -837,7 +860,16 @@ export default function GlobeApp() {
     if (next) setOpts((o) => ({ ...o, buildings: false, photo: false }));
   };
 
-  const flip = (key) => setOpts((o) => ({ ...o, [key]: !o[key] }));
+  const flip = (key) => {
+    const next = { ...opts, [key]: !opts[key] };
+    setOpts(next);
+    writePref("hg-opts", JSON.stringify(next));
+  };
+
+  const chooseBase = (id) => {
+    setBase(id);
+    writePref("hg-base", id);
+  };
 
   const showElev =
     place &&
@@ -1052,7 +1084,7 @@ export default function GlobeApp() {
                   type="button"
                   className="base"
                   aria-pressed={base === b.id}
-                  onClick={() => setBase(b.id)}
+                  onClick={() => chooseBase(b.id)}
                 >
                   <span className={`swatch swatch-${b.id}`} />
                   <span className="base-label">{b.label}</span>
