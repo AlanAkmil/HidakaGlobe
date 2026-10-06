@@ -95,3 +95,9 @@ export const IconStreet = (p) => (
     <path d="M12 8v2M12 13v2M12 18v1.5" />
   </svg>
 );
+
+export const IconChevron = (p) => (
+  <svg {...base} {...p}>
+    <path d="M6 14.5l6-6 6 6" />
+  </svg>
+);
