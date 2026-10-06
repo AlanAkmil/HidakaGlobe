@@ -193,6 +193,8 @@ html[data-perf="low"] .glass {
 }
 
 .brand-mark {
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
   display: grid;
   place-items: center;
   flex: none;
@@ -801,37 +803,23 @@ html[data-perf="low"] .glass {
   position: fixed;
   inset: 0;
   z-index: 40;
-  display: flex;
-  align-items: flex-end;
-  padding: 0 24px calc(env(safe-area-inset-bottom, 0px) + 64px);
+  display: grid;
+  place-items: center;
   color: #ffffff;
   pointer-events: none;
   transition: opacity 0.8s ease 0.1s, visibility 0s linear 0.9s;
 }
 
-.splash::before,
-.splash::after {
+.splash::before {
   content: "";
   position: absolute;
   inset: 0;
-  transition: opacity 0.9s ease;
-}
-
-.splash::before {
   background: #04060c;
-}
-
-.splash::after {
-  background: linear-gradient(to top, rgba(3, 5, 12, 0.82), rgba(3, 5, 12, 0) 62%);
-  opacity: 0;
+  transition: opacity 0.9s ease;
 }
 
 .splash.live::before {
   opacity: 0;
-}
-
-.splash.live::after {
-  opacity: 1;
 }
 
 .splash.gone {
@@ -842,47 +830,158 @@ html[data-perf="low"] .glass {
 .splash-inner {
   position: relative;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 26px;
+  transition: opacity 0.45s ease, transform 0.7s var(--ease);
 }
 
-.wordmark {
-  font-family: var(--font-display), system-ui, sans-serif;
-  font-weight: 700;
-  font-size: clamp(54px, 19vw, 128px);
-  line-height: 0.88;
-  letter-spacing: -0.045em;
+.splash.live .splash-inner {
+  opacity: 0;
+  transform: scale(1.1);
 }
 
-.splash-status {
-  margin-top: 18px;
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.72);
+.logo-anim {
+  width: min(42vw, 176px);
+  height: auto;
+  overflow: visible;
 }
 
-.loadbar {
-  position: relative;
-  display: block;
-  width: 120px;
-  height: 2px;
-  margin-top: 12px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.18);
+/* Garis bola digambar satu per satu */
+.logo-anim .ln {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: draw 0.95s cubic-bezier(0.65, 0, 0.35, 1) forwards;
 }
 
-.loadbar::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  width: 40%;
-  background: #ffffff;
-  animation: slide 1.1s ease-in-out infinite;
+.logo-anim .d0 {
+  animation-delay: 0.15s;
+}
+.logo-anim .d1 {
+  animation-delay: 0.6s;
+}
+.logo-anim .d2 {
+  animation-delay: 0.8s;
 }
 
-@keyframes slide {
-  from {
-    transform: translateX(-100%);
-  }
+@keyframes draw {
   to {
-    transform: translateX(250%);
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Dua garis bujur berputar bergantian, tumbuh dari garis tipis */
+.logo-anim .mer {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: spin 3.6s linear infinite both;
+}
+
+.logo-anim .mer.a {
+  animation-delay: 1.1s;
+}
+
+.logo-anim .mer.b {
+  animation-delay: 2s;
+}
+
+@keyframes spin {
+  0% {
+    transform: scaleX(0);
+    animation-timing-function: cubic-bezier(0.61, 1, 0.88, 1);
+  }
+  25% {
+    transform: scaleX(1);
+    animation-timing-function: cubic-bezier(0.12, 0, 0.39, 0);
+  }
+  50% {
+    transform: scaleX(0);
+    animation-timing-function: cubic-bezier(0.61, 1, 0.88, 1);
+  }
+  75% {
+    transform: scaleX(-1);
+    animation-timing-function: cubic-bezier(0.12, 0, 0.39, 0);
+  }
+  100% {
+    transform: scaleX(0);
+  }
+}
+
+/* Titik oranye mengorbit cincin miring */
+.logo-anim .orbit {
+  opacity: 0;
+  animation: fade 0.6s ease 1.4s forwards;
+}
+
+.logo-anim .ring {
+  fill: none;
+  stroke: rgba(255, 178, 62, 0.32);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.logo-anim .dot {
+  fill: #ffb23e;
+  stroke: none;
+}
+
+.logo-anim .ox {
+  animation: ox 3.4s cubic-bezier(0.37, 0, 0.63, 1) infinite both;
+}
+
+.logo-anim .oy {
+  animation: oy 3.4s linear infinite both;
+}
+
+@keyframes ox {
+  0%,
+  100% {
+    transform: translateX(-58px);
+  }
+  50% {
+    transform: translateX(58px);
+  }
+}
+
+@keyframes oy {
+  0% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.61, 1, 0.88, 1);
+  }
+  25% {
+    transform: translateY(17px);
+    animation-timing-function: cubic-bezier(0.12, 0, 0.39, 0);
+  }
+  50% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.61, 1, 0.88, 1);
+  }
+  75% {
+    transform: translateY(-17px);
+    animation-timing-function: cubic-bezier(0.12, 0, 0.39, 0);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.logo-name {
+  margin: 0;
+  margin-right: -0.46em;
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.46em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+  opacity: 0;
+  animation: fade 0.8s ease 1.2s forwards;
+}
+
+@keyframes fade {
+  to {
+    opacity: 1;
   }
 }
 
