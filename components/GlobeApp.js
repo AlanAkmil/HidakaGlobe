@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
+import { createLiveLayers } from "./liveLayers";
 import {
   IconBrand,
   IconCheck,
@@ -150,6 +151,13 @@ export default function GlobeApp() {
 
   const [place, setPlace] = useState(null);
   const [street, setStreet] = useState(null);
+  const [layers, setLayers] = useState({ planes: false, quakes: false, sats: false, hud: false });
+  const [liveInfo, setLiveInfo] = useState(null);
+  const liveRef = useRef(null);
+  const hudTimeRef = useRef(null);
+  const hudPosRef = useRef(null);
+  const hudViewRef = useRef(null);
+  const hudDataRef = useRef(null);
   const [streetStatus, setStreetStatus] = useState("loading");
   const mlyBoxRef = useRef(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -237,6 +245,66 @@ export default function GlobeApp() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Lapisan data live (pesawat, gempa, satelit), semua mati dari awal
+  useEffect(() => {
+    if (!viewerReady) return undefined;
+    const viewer = viewerRef.current;
+    const Cesium = window.Cesium;
+    if (!viewer || !Cesium) return undefined;
+    const mgr = createLiveLayers(viewer, Cesium, {
+      onInfo: (info) => setLiveInfo(info),
+      notice: (msg) => showToast(msg),
+    });
+    liveRef.current = mgr;
+    return () => {
+      mgr.destroy();
+      liveRef.current = null;
+    };
+  }, [viewerReady, showToast]);
+
+  useEffect(() => {
+    if (liveRef.current) liveRef.current.setLow(low);
+  }, [low, viewerReady]);
+
+  useEffect(() => {
+    if (liveRef.current) liveRef.current.set("planes", layers.planes);
+  }, [layers.planes, viewerReady]);
+
+  useEffect(() => {
+    if (liveRef.current) liveRef.current.set("quakes", layers.quakes);
+  }, [layers.quakes, viewerReady]);
+
+  useEffect(() => {
+    if (liveRef.current) liveRef.current.set("sats", layers.sats);
+  }, [layers.sats, viewerReady]);
+
+  // HUD taktis: diperbarui tiap detik langsung ke DOM
+  useEffect(() => {
+    if (!layers.hud || !viewerReady) return undefined;
+    const tick = () => {
+      const viewer = viewerRef.current;
+      const Cesium = window.Cesium;
+      if (!viewer || !Cesium || viewer.isDestroyed()) return;
+      const cam = viewer.camera;
+      if (hudTimeRef.current) hudTimeRef.current.textContent = new Date().toISOString().slice(11, 19);
+      if (hudPosRef.current && centerRef.current) hudPosRef.current.textContent = centerRef.current.textContent || "--";
+      if (hudViewRef.current) {
+        const hdg = (((Cesium.Math.toDegrees(cam.heading) % 360) + 360) % 360).toFixed(0).padStart(3, "0");
+        const tilt = Math.max(0, Math.round(90 + Cesium.Math.toDegrees(cam.pitch)));
+        hudViewRef.current.textContent = `${hdg} / MIRING ${tilt}`;
+      }
+      if (hudDataRef.current) {
+        const c = liveRef.current ? liveRef.current.counts() : { planes: 0, quakes: 0, sats: 0 };
+        hudDataRef.current.textContent = `PSW ${c.planes}  GMP ${c.quakes}  SAT ${c.sats}`;
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [layers.hud, viewerReady]);
+
+  const toggleLayer = (key) => setLayers((l) => ({ ...l, [key]: !l[key] }));
 
   // Street View (Mapillary): cari foto terdekat lalu tampilkan penampil 360
   useEffect(() => {
@@ -675,6 +743,7 @@ export default function GlobeApp() {
       setSearchOpen(false);
       setCopied(false);
       const id = ++reverseId.current;
+      setLiveInfo(null);
       setPlace({
         name: info.name || "Titik terpilih",
         address: info.address || "",
@@ -728,6 +797,8 @@ export default function GlobeApp() {
     setSearchOpen(false);
     setPanel(false);
     if (inputRef.current) inputRef.current.blur();
+    if (liveRef.current && liveRef.current.pick(pos)) return;
+    setLiveInfo(null);
     let cart;
     if (scene.globe.show) {
       const ray = viewer.camera.getPickRay(pos);
@@ -937,7 +1008,7 @@ export default function GlobeApp() {
     opts.terrain &&
     HAS_TOKEN &&
     !opts.photo;
-  const dockOpen = (sheetOpen && !!place) || panel;
+  const dockOpen = (sheetOpen && !!place) || panel || !!liveInfo;
   const resultsVisible =
     searchOpen && (searching || !!searchMsg || results.length > 0);
 
@@ -1061,8 +1132,8 @@ export default function GlobeApp() {
 
       <div className="dock">
         <section
-          className={`sheet glass ${sheetOpen && !panel ? "open" : ""}`}
-          aria-hidden={!(sheetOpen && !panel)}
+          className={`sheet glass ${sheetOpen && !panel && !liveInfo ? "open" : ""}`}
+          aria-hidden={!(sheetOpen && !panel && !liveInfo)}
           aria-label="Detail tempat"
         >
           {place && (
@@ -1122,6 +1193,48 @@ export default function GlobeApp() {
                   }
                 >
                   <IconStreet /> Street View
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+
+        <section
+          className={`sheet glass ${liveInfo && !panel ? "open" : ""}`}
+          aria-hidden={!(liveInfo && !panel)}
+          aria-label="Detail objek live"
+        >
+          {liveInfo && (
+            <>
+              <div className="sheet-head">
+                <div className="sheet-title">
+                  <h2>{liveInfo.title}</h2>
+                  <p>{liveInfo.sub}</p>
+                </div>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => setLiveInfo(null)}
+                  aria-label="Tutup"
+                >
+                  <IconClose />
+                </button>
+              </div>
+              <dl className="facts">
+                {liveInfo.rows.map((r) => (
+                  <div key={r[0]}>
+                    <dt>{r[0]}</dt>
+                    <dd>{r[1]}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="sheet-actions">
+                <button
+                  type="button"
+                  className="btn solid"
+                  onClick={() => flyToPlace(liveInfo.lat, liveInfo.lon, { range: liveInfo.range })}
+                >
+                  Dekati
                 </button>
               </div>
             </>
@@ -1197,6 +1310,40 @@ export default function GlobeApp() {
               </p>
             )}
 
+            <h3>Data live</h3>
+            <Switch
+              id="sw-planes"
+              label="Pesawat live"
+              hint="Dari data ADS-B. Dekati dulu daerahnya, diambil di sekitar tengah layar"
+              checked={layers.planes}
+              onChange={() => toggleLayer("planes")}
+            />
+            <Switch
+              id="sw-quakes"
+              label="Gempa 24 jam"
+              hint="Dari USGS. Ukuran titik sesuai magnitudo, warna sesuai kedalaman"
+              checked={layers.quakes}
+              onChange={() => toggleLayer("quakes")}
+            />
+            <Switch
+              id="sw-sats"
+              label="Satelit dan ISS"
+              hint="Orbit dihitung di browser dari data CelesTrak"
+              checked={layers.sats}
+              onChange={() => toggleLayer("sats")}
+            />
+            <Switch
+              id="sw-hud"
+              label="HUD taktis"
+              hint="Jam UTC, koordinat tengah, arah kamera, dan jumlah objek"
+              checked={layers.hud}
+              onChange={() => toggleLayer("hud")}
+            />
+            <p className="note">
+              Semua layer di sini mati setiap kali web dibuka supaya tetap ringan. Nyalakan
+              seperlunya.
+            </p>
+
             <h3>Kinerja</h3>
             <Switch
               id="sw-low"
@@ -1208,6 +1355,25 @@ export default function GlobeApp() {
             <p className="byline">Hidaka Globe oleh Hidaka401</p>
           </div>
         </section>
+      </div>
+
+      <div className={`hud ${layers.hud ? "on" : ""}`} aria-hidden="true">
+        <p>
+          <span>UTC</span>
+          <b ref={hudTimeRef}>--:--:--</b>
+        </p>
+        <p>
+          <span>PUSAT</span>
+          <b ref={hudPosRef}>--</b>
+        </p>
+        <p>
+          <span>ARAH</span>
+          <b ref={hudViewRef}>--</b>
+        </p>
+        <p>
+          <span>DATA</span>
+          <b ref={hudDataRef}>--</b>
+        </p>
       </div>
 
       <footer className="foot">
