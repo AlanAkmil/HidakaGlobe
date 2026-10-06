@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
 import { createLiveLayers } from "./liveLayers";
+import { SENSORS, createSensor } from "./sensor";
 import {
   IconBrand,
   IconCheck,
@@ -152,9 +153,11 @@ export default function GlobeApp() {
 
   const [place, setPlace] = useState(null);
   const [street, setStreet] = useState(null);
-  const [layers, setLayers] = useState({ planes: false, quakes: false, sats: false, hud: false });
+  const [layers, setLayers] = useState({ planes: false, quakes: false, sats: false, traffic: false, hud: false });
   const [liveInfo, setLiveInfo] = useState(null);
   const liveRef = useRef(null);
+  const sensorRef = useRef(null);
+  const [sensor, setSensor] = useState("none");
   const hudTimeRef = useRef(null);
   const hudPosRef = useRef(null);
   const hudViewRef = useRef(null);
@@ -282,6 +285,31 @@ export default function GlobeApp() {
     if (liveRef.current) liveRef.current.set("sats", layers.sats);
   }, [layers.sats, viewerReady]);
 
+  useEffect(() => {
+    if (liveRef.current) liveRef.current.set("traffic", layers.traffic);
+  }, [layers.traffic, viewerReady]);
+
+  // Filter sensor (post-process), selalu mulai dari Normal
+  useEffect(() => {
+    if (!viewerReady) return undefined;
+    const viewer = viewerRef.current;
+    const Cesium = window.Cesium;
+    if (!viewer || !Cesium) return undefined;
+    const mgr = createSensor(viewer, Cesium, {
+      notice: (msg) => showToast(msg),
+      onFail: () => setSensor("none"),
+    });
+    sensorRef.current = mgr;
+    return () => {
+      mgr.destroy();
+      sensorRef.current = null;
+    };
+  }, [viewerReady, showToast]);
+
+  useEffect(() => {
+    if (sensorRef.current) sensorRef.current.set(sensor);
+  }, [sensor, viewerReady]);
+
   // HUD taktis: diperbarui tiap detik langsung ke DOM
   useEffect(() => {
     if (!layers.hud || !viewerReady) return undefined;
@@ -298,8 +326,9 @@ export default function GlobeApp() {
         hudViewRef.current.textContent = `${hdg} / MIRING ${tilt}`;
       }
       if (hudDataRef.current) {
-        const c = liveRef.current ? liveRef.current.counts() : { planes: 0, quakes: 0, sats: 0 };
-        hudDataRef.current.textContent = `PSW ${c.planes}  GMP ${c.quakes}  SAT ${c.sats}`;
+        const c = liveRef.current ? liveRef.current.counts() : { planes: 0, quakes: 0, sats: 0, cars: 0 };
+        hudDataRef.current.textContent =
+          `PSW ${c.planes}  GMP ${c.quakes}  SAT ${c.sats}` + (c.cars ? `  MOB ${c.cars}` : "");
       }
     };
     tick();
@@ -1370,6 +1399,13 @@ export default function GlobeApp() {
               onChange={() => toggleLayer("sats")}
             />
             <Switch
+              id="sw-traffic"
+              label="Lalu lintas (simulasi)"
+              hint="Mobil digerakkan komputer di atas jalan asli OSM, bukan posisi mobil sungguhan. Dekati kota dulu"
+              checked={layers.traffic}
+              onChange={() => toggleLayer("traffic")}
+            />
+            <Switch
               id="sw-hud"
               label="HUD taktis"
               hint="Jam UTC, koordinat tengah, arah kamera, dan jumlah objek"
@@ -1379,6 +1415,24 @@ export default function GlobeApp() {
             <p className="note">
               Semua layer di sini mati setiap kali web dibuka supaya tetap ringan. Nyalakan
               seperlunya.
+            </p>
+
+            <h3>Filter sensor</h3>
+            <div className="chips" role="group" aria-label="Filter sensor">
+              {SENSORS.map((x) => (
+                <button
+                  key={x.id}
+                  type="button"
+                  className="chip"
+                  aria-pressed={sensor === x.id}
+                  onClick={() => setSensor(x.id)}
+                >
+                  {x.label}
+                </button>
+              ))}
+            </div>
+            <p className="note">
+              Filter menambah beban GPU. Kembali ke Normal kalau terasa berat.
             </p>
 
             <h3>Kinerja</h3>
@@ -1410,6 +1464,10 @@ export default function GlobeApp() {
         <p>
           <span>DATA</span>
           <b ref={hudDataRef}>--</b>
+        </p>
+        <p>
+          <span>SENSOR</span>
+          <b>{(SENSORS.find((x) => x.id === sensor) || SENSORS[0]).hud}</b>
         </p>
       </div>
 
