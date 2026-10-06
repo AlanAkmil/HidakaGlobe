@@ -366,10 +366,9 @@ export default function GlobeApp() {
               });
         } else if (base === "gelap") {
           provider = new Cesium.UrlTemplateImageryProvider({
-            url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-            subdomains: ["a", "b", "c", "d"],
-            maximumLevel: 19,
-            credit: "Peta: OpenStreetMap contributors, CARTO",
+            url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+            maximumLevel: 16,
+            credit: "Peta: Esri, HERE, Garmin, OpenStreetMap contributors",
           });
         } else {
           provider = new Cesium.OpenStreetMapImageryProvider({
