@@ -16,6 +16,8 @@ const body = Instrument_Sans({
 
 export const metadata = {
   title: "Hidaka Globe",
+  authors: [{ name: "Alan" }],
+  creator: "Alan",
   description:
     "Jelajahi bumi dalam 3D: medan, gedung, dan citra satelit dalam satu globe.",
 };
