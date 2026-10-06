@@ -7,6 +7,7 @@ import {
   IconBrand,
   IconCheck,
   IconClose,
+  IconChevron,
   IconCompass,
   IconCopy,
   IconLayers,
@@ -160,6 +161,8 @@ export default function GlobeApp() {
   const hudDataRef = useRef(null);
   const [streetStatus, setStreetStatus] = useState("loading");
   const mlyBoxRef = useRef(null);
+  const mlyRef = useRef(null);
+  const mlyPos = useRef(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState("");
@@ -315,6 +318,7 @@ export default function GlobeApp() {
       return undefined;
     }
     setStreetStatus("loading");
+    mlyPos.current = null;
     const ctrl = new AbortController();
     let viewer = null;
     let dead = false;
@@ -336,10 +340,24 @@ export default function GlobeApp() {
           accessToken: mlyToken,
           container: mlyBoxRef.current,
           imageId,
-          component: { cover: false },
+          component: {
+            cover: false,
+            direction: true,
+            sequence: true,
+            zoom: true,
+            bearing: true,
+            pointer: true,
+            keyboard: true,
+          },
+        });
+        mlyRef.current = viewer;
+        viewer.on("image", (e) => {
+          const ll = e && e.image && e.image.lngLat;
+          if (ll) mlyPos.current = { lat: ll.lat, lon: ll.lng };
         });
         window.addEventListener("resize", onResize);
         setStreetStatus("ready");
+        showToast("Geser buat melihat sekeliling. Ketuk panah di jalan atau tombol Maju buat jalan.");
       } catch (e) {
         if (!dead) setStreetStatus("error");
       }
@@ -348,6 +366,7 @@ export default function GlobeApp() {
       dead = true;
       ctrl.abort();
       window.removeEventListener("resize", onResize);
+      mlyRef.current = null;
       if (viewer) {
         try {
           viewer.remove();
@@ -356,7 +375,7 @@ export default function GlobeApp() {
         }
       }
     };
-  }, [street]);
+  }, [street, showToast]);
 
   // Buat viewer Cesium sekali setelah skrip siap
   useEffect(() => {
@@ -997,6 +1016,24 @@ export default function GlobeApp() {
     writePref("hg-opts", JSON.stringify(next));
   };
 
+  const moveStreet = (dir) => {
+    const v = mlyRef.current;
+    const m = window.mapillary;
+    if (!v || !m) return;
+    const d = dir === "next" ? m.NavigationDirection.Next : m.NavigationDirection.Prev;
+    v.moveDir(d).catch(() => showToast("Tidak ada foto lanjutan ke arah itu."));
+  };
+
+  const closeStreet = () => {
+    const pos = mlyPos.current;
+    const s = street;
+    setStreet(null);
+    mlyPos.current = null;
+    if (pos && s && (Math.abs(pos.lat - s.lat) > 0.0003 || Math.abs(pos.lon - s.lon) > 0.0003)) {
+      flyToPlace(pos.lat, pos.lon, { range: 700 });
+    }
+  };
+
   const chooseBase = (id) => {
     setBase(id);
     writePref("hg-base", id);
@@ -1400,15 +1437,37 @@ export default function GlobeApp() {
             <b>{street ? street.name : ""}</b>
             <span>Street View oleh Mapillary</span>
           </div>
+          {street && (
+            <a
+              className="btn soft sm"
+              href={googleStreetUrl(street.lat, street.lon)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Google
+            </a>
+          )}
           <button
             type="button"
             className="icon-btn"
-            onClick={() => setStreet(null)}
+            onClick={closeStreet}
             aria-label="Tutup Street View"
           >
             <IconClose />
           </button>
         </div>
+        {streetStatus === "ready" && (
+          <div className="street-move">
+            <button type="button" className="move-btn" onClick={() => moveStreet("next")}>
+              <IconChevron />
+              <span>Maju</span>
+            </button>
+            <button type="button" className="move-btn back" onClick={() => moveStreet("prev")}>
+              <IconChevron />
+              <span>Mundur</span>
+            </button>
+          </div>
+        )}
         {streetStatus !== "ready" && (
           <div className="street-msg">
             <p>
