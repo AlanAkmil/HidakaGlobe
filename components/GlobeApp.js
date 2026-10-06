@@ -12,13 +12,17 @@ import {
   IconLocate,
   IconMoon,
   IconSearch,
+  IconStreet,
   IconSun,
   IconTilt,
 } from "./Icons";
 import {
   CESIUM_BASE,
   formatAltitude,
+  findNearestImage,
   formatCoord,
+  googleStreetUrl,
+  loadMapillary,
   parseCoords,
   prefersReducedMotion,
   reversePlace,
@@ -145,6 +149,9 @@ export default function GlobeApp() {
   const [searchOpen, setSearchOpen] = useState(false);
 
   const [place, setPlace] = useState(null);
+  const [street, setStreet] = useState(null);
+  const [streetStatus, setStreetStatus] = useState("loading");
+  const mlyBoxRef = useRef(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState("");
@@ -224,11 +231,64 @@ export default function GlobeApp() {
       if (e.key === "Escape") {
         setSearchOpen(false);
         setPanel(false);
+        setStreet(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Street View (Mapillary): cari foto terdekat lalu tampilkan penampil 360
+  useEffect(() => {
+    if (!street) return undefined;
+    const mlyToken = process.env.NEXT_PUBLIC_MAPILLARY_TOKEN;
+    if (!mlyToken) {
+      setStreetStatus("notoken");
+      return undefined;
+    }
+    setStreetStatus("loading");
+    const ctrl = new AbortController();
+    let viewer = null;
+    let dead = false;
+    const onResize = () => {
+      if (viewer) viewer.resize();
+    };
+    (async () => {
+      try {
+        const [mly, imageId] = await Promise.all([
+          loadMapillary(),
+          findNearestImage(street.lat, street.lon, mlyToken, ctrl.signal),
+        ]);
+        if (dead) return;
+        if (!imageId) {
+          setStreetStatus("empty");
+          return;
+        }
+        viewer = new mly.Viewer({
+          accessToken: mlyToken,
+          container: mlyBoxRef.current,
+          imageId,
+          component: { cover: false },
+        });
+        window.addEventListener("resize", onResize);
+        setStreetStatus("ready");
+      } catch (e) {
+        if (!dead) setStreetStatus("error");
+      }
+    })();
+    return () => {
+      dead = true;
+      ctrl.abort();
+      window.removeEventListener("resize", onResize);
+      if (viewer) {
+        try {
+          viewer.remove();
+        } catch (e) {
+          /* abaikan */
+        }
+      }
+    };
+  }, [street]);
 
   // Buat viewer Cesium sekali setelah skrip siap
   useEffect(() => {
@@ -1054,6 +1114,15 @@ export default function GlobeApp() {
                     </>
                   )}
                 </button>
+                <button
+                  type="button"
+                  className="btn soft wide"
+                  onClick={() =>
+                    setStreet({ lat: place.lat, lon: place.lon, name: place.name })
+                  }
+                >
+                  <IconStreet /> Street View
+                </button>
               </div>
             </>
           )}
@@ -1151,6 +1220,52 @@ export default function GlobeApp() {
 
       <div className={`toast ${toast ? "show" : ""}`} role="status" aria-live="polite">
         {toast}
+      </div>
+
+      <div
+        className={`street ${street ? "open" : ""}`}
+        role="dialog"
+        aria-label="Street View"
+        aria-hidden={!street}
+      >
+        <div ref={mlyBoxRef} className="street-view" />
+        <div className="street-bar">
+          <div className="street-title">
+            <b>{street ? street.name : ""}</b>
+            <span>Street View oleh Mapillary</span>
+          </div>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setStreet(null)}
+            aria-label="Tutup Street View"
+          >
+            <IconClose />
+          </button>
+        </div>
+        {streetStatus !== "ready" && (
+          <div className="street-msg">
+            <p>
+              {streetStatus === "loading" && "Mencari foto jalan terdekat..."}
+              {streetStatus === "empty" &&
+                "Belum ada foto jalan di sekitar titik ini. Coba taruh penanda di tepi jalan besar."}
+              {streetStatus === "error" &&
+                "Street View gagal dimuat. Cek koneksi lalu coba lagi."}
+              {streetStatus === "notoken" &&
+                "Token Mapillary belum dipasang. Isi NEXT_PUBLIC_MAPILLARY_TOKEN di Vercel lalu redeploy."}
+            </p>
+            {street && streetStatus !== "loading" && (
+              <a
+                className="btn solid"
+                href={googleStreetUrl(street.lat, street.lon)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Buka di Google Maps
+              </a>
+            )}
+          </div>
+        )}
       </div>
 
       <div
