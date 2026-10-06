@@ -58,7 +58,7 @@ export function createLiveLayers(viewer, Cesium, cb) {
   const scene = viewer.scene;
   const rad = Cesium.Math.toRadians;
   const deg = Cesium.Math.toDegrees;
-  const state = { planes: false, quakes: false, sats: false };
+  const state = { planes: false, quakes: false, sats: false, traffic: false };
   let low = false;
   let dead = false;
 
@@ -66,7 +66,8 @@ export function createLiveLayers(viewer, Cesium, cb) {
   const quakePts = scene.primitives.add(new Cesium.PointPrimitiveCollection());
   const satPts = scene.primitives.add(new Cesium.PointPrimitiveCollection());
   const satLabels = scene.primitives.add(new Cesium.LabelCollection());
-  [planeBB, quakePts, satPts, satLabels].forEach((c) => {
+  const trafficPts = scene.primitives.add(new Cesium.PointPrimitiveCollection());
+  [planeBB, quakePts, satPts, satLabels, trafficPts].forEach((c) => {
     c.show = false;
   });
 
@@ -406,6 +407,201 @@ export function createLiveLayers(viewer, Cesium, cb) {
     render();
   }
 
+  // ---------- Lalu lintas (simulasi di atas jalan OSM asli) ----------
+  const OVERPASS = "https://overpass-api.de/api/interpreter";
+  const ROAD_SPEED = { motorway: 22, trunk: 18, primary: 13, secondary: 11, tertiary: 9 };
+  const M_DEG = 111320;
+  let cars = [];
+  let trafficCheck = null;
+  let trafficAnim = null;
+  let trafficCtrl = null;
+  let loadedCenter = null;
+  let lastFetch = 0;
+  let lastStep = 0;
+  let trafficFetching = false;
+  let trafficWarned = false;
+  let trafficFailed = false;
+
+  function segLen(a, b) {
+    const dx = (b.lon - a.lon) * M_DEG * Math.cos(rad((a.lat + b.lat) / 2));
+    const dy = (b.lat - a.lat) * M_DEG;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function buildRoad(el) {
+    const g = el.geometry;
+    if (!g || g.length < 2) return null;
+    const cum = [0];
+    for (let i = 1; i < g.length; i += 1) cum.push(cum[i - 1] + segLen(g[i - 1], g[i]));
+    const len = cum[cum.length - 1];
+    if (len < 30) return null;
+    const tags = el.tags || {};
+    let oneway = 0;
+    if (tags.oneway === "yes" || tags.oneway === "true" || tags.oneway === "1" || tags.highway === "motorway") {
+      oneway = 1;
+    } else if (tags.oneway === "-1") {
+      oneway = -1;
+    }
+    return { g, cum, len, oneway, v: ROAD_SPEED[tags.highway] || 9 };
+  }
+
+  function posAt(road, s) {
+    const cum = road.cum;
+    let i = 1;
+    while (i < cum.length - 1 && cum[i] < s) i += 1;
+    const a = road.g[i - 1];
+    const b = road.g[i];
+    const seg = cum[i] - cum[i - 1] || 1;
+    const t = Math.min(1, Math.max(0, (s - cum[i - 1]) / seg));
+    return { lat: a.lat + (b.lat - a.lat) * t, lon: a.lon + (b.lon - a.lon) * t };
+  }
+
+  function spawnCars(roads) {
+    const max = low ? 50 : 140;
+    trafficPts.removeAll();
+    cars = [];
+    const order = roads.slice().sort(() => Math.random() - 0.5);
+    for (const road of order) {
+      const n = Math.min(3, Math.max(1, Math.round(road.len / 160)));
+      for (let k = 0; k < n && cars.length < max; k += 1) {
+        const dir = road.oneway !== 0 ? road.oneway : Math.random() < 0.5 ? -1 : 1;
+        const car = {
+          road,
+          s: Math.random() * road.len,
+          dir,
+          v: road.v * (0.7 + Math.random() * 0.5),
+          h: 0,
+          k: Math.floor(Math.random() * 15),
+          pt: null,
+        };
+        const p = posAt(road, car.s);
+        car.pt = trafficPts.add({
+          position: Cesium.Cartesian3.fromDegrees(p.lon, p.lat, 2),
+          pixelSize: 5,
+          color: Cesium.Color.fromCssColorString(Math.random() < 0.18 ? "#ff5a3c" : "#ffd27a"),
+          outlineColor: Cesium.Color.fromCssColorString("#04060c").withAlpha(0.8),
+          outlineWidth: 1,
+          disableDepthTestDistance: 50000,
+        });
+        cars.push(car);
+      }
+      if (cars.length >= max) break;
+    }
+    render();
+  }
+
+  function stepTraffic() {
+    if (dead || !state.traffic || viewer.isDestroyed()) return;
+    const h = viewer.camera.positionCartographic.height;
+    const visible = h < 12000;
+    trafficPts.show = visible;
+    if (!visible) return;
+    const now = performance.now();
+    const dt = Math.min(0.5, (now - lastStep) / 1000);
+    lastStep = now;
+    for (const c of cars) {
+      c.s += c.dir * c.v * dt * 1.5;
+      const L = c.road.len;
+      if (c.s > L) {
+        if (c.road.oneway !== 0) c.s = 0;
+        else {
+          c.s = L;
+          c.dir = -1;
+        }
+      } else if (c.s < 0) {
+        if (c.road.oneway !== 0) c.s = L;
+        else {
+          c.s = 0;
+          c.dir = 1;
+        }
+      }
+      const p = posAt(c.road, c.s);
+      c.k += 1;
+      if (c.k % 15 === 0) {
+        const gh = scene.globe.getHeight(Cesium.Cartographic.fromDegrees(p.lon, p.lat));
+        if (typeof gh === "number") c.h = gh;
+      }
+      c.pt.position = Cesium.Cartesian3.fromDegrees(p.lon, p.lat, c.h + 2);
+    }
+    scene.requestRender();
+  }
+
+  async function fetchRoads(lat, lon) {
+    trafficFetching = true;
+    lastFetch = Date.now();
+    trafficCtrl = new AbortController();
+    const dLat = 0.012;
+    const dLon = 0.012 / Math.max(0.2, Math.cos(rad(lat)));
+    const bbox = `${(lat - dLat).toFixed(5)},${(lon - dLon).toFixed(5)},${(lat + dLat).toFixed(5)},${(lon + dLon).toFixed(5)}`;
+    const q = `[out:json][timeout:20];way["highway"~"^(motorway|trunk|primary|secondary|tertiary)$"](${bbox});out geom 350;`;
+    try {
+      const res = await fetch(`${OVERPASS}?data=${encodeURIComponent(q)}`, { signal: trafficCtrl.signal });
+      if (!res.ok) throw new Error("overpass");
+      const json = await res.json();
+      if (dead || !state.traffic) return;
+      const roads = [];
+      for (const el of json.elements || []) {
+        if (el.type !== "way") continue;
+        const r = buildRoad(el);
+        if (r) roads.push(r);
+      }
+      loadedCenter = { lat, lon };
+      if (roads.length === 0) cb.notice("Belum ada data jalan besar di area ini.");
+      spawnCars(roads);
+      trafficFailed = false;
+    } catch (e) {
+      if (e && e.name === "AbortError") return;
+      if (!trafficFailed) {
+        trafficFailed = true;
+        cb.notice("Data jalan belum bisa diambil, coba lagi sebentar.");
+      }
+    } finally {
+      trafficFetching = false;
+    }
+  }
+
+  function checkTraffic() {
+    if (dead || !state.traffic) return;
+    const { lat, lon, h } = viewCenter();
+    if (h >= 12000) {
+      if (!trafficWarned) {
+        trafficWarned = true;
+        cb.notice("Dekati kota dulu (di bawah sekitar 12 km) buat melihat lalu lintas.");
+      }
+    } else {
+      trafficWarned = false;
+      if (!trafficFetching && Date.now() - lastFetch > 8000) {
+        const far =
+          !loadedCenter ||
+          Math.abs(lat - loadedCenter.lat) > 0.007 ||
+          Math.abs(lon - loadedCenter.lon) > 0.007;
+        if (far) fetchRoads(lat, lon);
+      }
+    }
+    trafficCheck = setTimeout(checkTraffic, 3000);
+  }
+
+  function setTraffic(on) {
+    state.traffic = on;
+    trafficPts.show = on;
+    clearTimeout(trafficCheck);
+    clearInterval(trafficAnim);
+    if (trafficCtrl) trafficCtrl.abort();
+    if (on) {
+      trafficWarned = false;
+      trafficFailed = false;
+      loadedCenter = null;
+      lastStep = performance.now();
+      checkTraffic();
+      trafficAnim = setInterval(stepTraffic, low ? 200 : 130);
+    } else {
+      trafficPts.removeAll();
+      cars = [];
+      loadedCenter = null;
+    }
+    render();
+  }
+
   // ---------- Siklus bersama ----------
   const ticker = setInterval(() => {
     if (dead || viewer.isDestroyed()) return;
@@ -426,6 +622,7 @@ export function createLiveLayers(viewer, Cesium, cb) {
       if (name === "planes") setPlanes(!!on);
       else if (name === "quakes") setQuakes(!!on);
       else if (name === "sats") setSats(!!on);
+      else if (name === "traffic") setTraffic(!!on);
     },
     setLow(v) {
       low = !!v;
@@ -435,6 +632,7 @@ export function createLiveLayers(viewer, Cesium, cb) {
         planes: planes.size,
         quakes: state.quakes ? quakePts.length : 0,
         sats: state.sats && sats ? sats.length : 0,
+        cars: state.traffic ? cars.length : 0,
       };
     },
     pick(pos) {
@@ -450,10 +648,13 @@ export function createLiveLayers(viewer, Cesium, cb) {
       clearInterval(ticker);
       clearTimeout(planeTimer);
       clearTimeout(quakeTimer);
+      clearTimeout(trafficCheck);
+      clearInterval(trafficAnim);
+      if (trafficCtrl) trafficCtrl.abort();
       if (planeCtrl) planeCtrl.abort();
       if (quakeCtrl) quakeCtrl.abort();
       if (!viewer.isDestroyed()) {
-        [planeBB, quakePts, satPts, satLabels].forEach((c) => {
+        [planeBB, quakePts, satPts, satLabels, trafficPts].forEach((c) => {
           try {
             scene.primitives.remove(c);
           } catch (e) {
