@@ -130,6 +130,7 @@ export default function GlobeApp() {
   const [viewerReady, setViewerReady] = useState(false);
   const [fatal, setFatal] = useState("");
   const [introDone, setIntroDone] = useState(false);
+  const [minDone, setMinDone] = useState(false);
 
   const [theme, setTheme] = useState("light");
   const [low, setLow] = useState(false);
@@ -152,6 +153,33 @@ export default function GlobeApp() {
     setToast(msg);
     clearTimeout(toastTimer.current);
     if (msg) toastTimer.current = setTimeout(() => setToast(""), 3600);
+  }, []);
+
+  // Animasi pembuka diberi waktu tampil minimum supaya sempat terbaca
+  useEffect(() => {
+    const id = setTimeout(() => setMinDone(true), 2400);
+    return () => clearTimeout(id);
+  }, []);
+
+  // Tanda tangan tersembunyi: tap lambang bola 5 kali beruntun, atau buka konsol browser
+  const brandTaps = useRef({ n: 0, t: 0 });
+  const onBrandTap = useCallback(() => {
+    const now = Date.now();
+    const b = brandTaps.current;
+    b.n = now - b.t < 900 ? b.n + 1 : 1;
+    b.t = now;
+    if (b.n >= 5) {
+      b.n = 0;
+      showToast("Made by Alan");
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    try {
+      console.info("%cHidaka Globe%c  made by Alan", "font-weight:700", "color:#ffb23e");
+    } catch (e) {
+      /* abaikan */
+    }
   }, []);
 
   // Baca preferensi yang sudah dipasang skrip awal di layout
@@ -837,7 +865,7 @@ export default function GlobeApp() {
       <header className="top">
         <h1 className="sr-only">Hidaka Globe</h1>
         <form className="search glass" onSubmit={onSearch} role="search">
-          <span className="brand-mark">
+          <span className="brand-mark" onClick={onBrandTap}>
             <IconBrand />
           </span>
           <input
@@ -1094,21 +1122,36 @@ export default function GlobeApp() {
       </div>
 
       <div
-        className={`splash ${viewerReady ? "live" : ""} ${introDone ? "gone" : ""}`}
+        className={`splash ${viewerReady && minDone ? "live" : ""} ${introDone ? "gone" : ""}`}
         aria-hidden="true"
       >
         <div className="splash-inner">
-          <p className="wordmark">
-            Hidaka
-            <br />
-            Globe
-          </p>
-          {!viewerReady && (
-            <p className="splash-status">
-              Memuat mesin peta
-              <span className="loadbar" />
-            </p>
-          )}
+          <svg
+            className="logo-anim"
+            viewBox="0 0 120 120"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          >
+            <circle className="ln d0" cx="60" cy="60" r="48" pathLength="1" />
+            <path className="ln d1" d="M12 60Q60 68 108 60" pathLength="1" />
+            <path className="ln d2" d="M18.4 36Q60 44 101.6 36" pathLength="1" />
+            <path className="ln d2" d="M18.4 84Q60 92 101.6 84" pathLength="1" />
+            <ellipse className="mer a" cx="60" cy="60" rx="48" ry="48" />
+            <ellipse className="mer b" cx="60" cy="60" rx="48" ry="48" />
+            <g className="orbit">
+              <g transform="rotate(-24 60 60)">
+                <ellipse className="ring" cx="60" cy="60" rx="58" ry="17" />
+                <g className="ox">
+                  <g className="oy">
+                    <circle className="dot" cx="60" cy="60" r="4.2" />
+                  </g>
+                </g>
+              </g>
+            </g>
+          </svg>
+          <p className="logo-name">Hidaka Globe</p>
         </div>
       </div>
 
